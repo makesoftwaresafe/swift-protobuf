@@ -35,6 +35,7 @@ private func toJSONFieldName(_ s: UnsafeBufferPointer<UInt8>) -> String {
     }
     return String(result)
 }
+#if !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 private func toJSONFieldName(_ s: StaticString) -> String {
     guard s.hasPointerRepresentation else {
         // If it's a single code point, it wouldn't be changed by the above algorithm.
@@ -43,6 +44,7 @@ private func toJSONFieldName(_ s: StaticString) -> String {
     }
     return toJSONFieldName(UnsafeBufferPointer(start: s.utf8Start, count: s.utf8CodeUnitCount))
 }
+#endif  // !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 
 /// Allocate static memory buffers to intern UTF-8
 /// string data.  Track the buffers and release all of those buffers
@@ -180,11 +182,11 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
     /// has to be computed, it caches the UTF-8 bytes in an
     /// unmovable and immutable heap area.
     package struct Name: Hashable, CustomStringConvertible {
+        #if !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
         // This should not be used outside of this file, as it requires
         // coordinating the lifecycle with the lifecycle of the pool
         // where the raw UTF8 gets interned.
         fileprivate init(staticString: StaticString, pool: InternPool) {
-            self.nameString = .staticString(staticString)
             if staticString.hasPointerRepresentation {
                 self.utf8Buffer = UnsafeRawBufferPointer(
                     start: staticString.utf8Start,
@@ -194,6 +196,7 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
                 self.utf8Buffer = staticString.withUTF8Buffer { pool.intern(utf8Ptr: $0) }
             }
         }
+        #endif  // !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 
         // This should not be used outside of this file, as it requires
         // coordinating the lifecycle with the lifecycle of the pool
@@ -201,38 +204,24 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
         fileprivate init(string: String, pool: InternPool) {
             let utf8 = string.utf8
             self.utf8Buffer = pool.intern(utf8: utf8)
-            self.nameString = .string(string)
         }
 
         // This is for building a transient `Name` object sufficient for lookup purposes.
         // It MUST NOT be exposed outside of this file.
         fileprivate init(transientUtf8Buffer: UnsafeRawBufferPointer) {
-            self.nameString = .staticString("")
             self.utf8Buffer = transientUtf8Buffer
         }
 
         // This is for building a `Name` object from a slice of a bytecode `StaticString`.
         // It MUST NOT be exposed outside of this file.
         fileprivate init(bytecodeUTF8Buffer: UnsafeBufferPointer<UInt8>) {
-            self.nameString = .immortalBuffer(bytecodeUTF8Buffer)
             self.utf8Buffer = UnsafeRawBufferPointer(bytecodeUTF8Buffer)
         }
 
-        private(set) var utf8Buffer: UnsafeRawBufferPointer
-
-        private enum NameString {
-            case string(String)
-            case staticString(StaticString)
-            case immortalBuffer(UnsafeBufferPointer<UInt8>)
-        }
-        private var nameString: NameString
+        internal let utf8Buffer: UnsafeRawBufferPointer
 
         public var description: String {
-            switch nameString {
-            case .string(let s): return s
-            case .staticString(let s): return s.description
-            case .immortalBuffer(let b): return String(decoding: b, as: UTF8.self)
-            }
+            String(decoding: self.utf8Buffer, as: UTF8.self)
         }
 
         public func hash(into hasher: inout Hasher) {
@@ -255,6 +244,8 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
         private(set) var proto: Name
     }
 
+    #if !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
+
     /// A description of the names for a particular field or enum case.
     /// The different forms here let us minimize the amount of string
     /// data that we store in the binary.
@@ -276,6 +267,8 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
         /// enums are always the same.
         case aliased(proto: StaticString, aliases: [StaticString])
     }
+
+    #endif  // !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 
     private var internPool = InternPool()
 
@@ -300,6 +293,15 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
 
     /// Creates a new empty field/enum-case name/number mapping.
     public init() {}
+
+    #if REMOVE_LEGACY_NAMEMAP_INITIALIZERS
+
+    // Provide a dummy for ExpressibleByDictionaryLiteral conformance.
+    public init(dictionaryLiteral elements: (Int, Int)...) {
+        fatalError("Support compiled out removed")
+    }
+
+    #else  // !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 
     /// Build the bidirectional maps between numbers and proto/JSON names.
     public init(
@@ -365,6 +367,8 @@ public struct _NameMap: ExpressibleByDictionaryLiteral {
             }
         }
     }
+
+    #endif  // !REMOVE_LEGACY_NAMEMAP_INITIALIZERS
 
     public init(bytecode: StaticString) {
         var previousNumber = 0
