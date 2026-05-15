@@ -224,7 +224,7 @@ class FileGenerator {
                 "",
                 "// MARK: - Code below here is support for the SwiftProtobuf runtime."
             )
-            if needsProtoPackage {
+            if needsProtoPackage && !generatorOptions.experimentalHiddenNames.contains(.types) {
                 p.print(
                     "",
                     "fileprivate nonisolated let _protobuf_package = \"\(protoPackage)\""
